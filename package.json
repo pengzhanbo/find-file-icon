@@ -1,6 +1,6 @@
 {
   "name": "find-file-icon",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Find file icon by file path, use iconify collections",
   "keywords": [
     "catppuccin",
