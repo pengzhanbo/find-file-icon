@@ -19,7 +19,7 @@ export interface ResolvedIconSetFileStem {
 /**
  * `IconSet` 展平后的查找表
  *
- * 三个字典型字段均为无原型对象，可直接用 `hasOwnProperty` 安全读取。
+ * 字典型字段均为无原型对象，可直接用 `hasOwnProperty` 安全读取。
  */
 export interface ResolvedIconSet {
   /**
@@ -36,6 +36,11 @@ export interface ResolvedIconSet {
    * 文件扩展名（不含前导点）→ 图标名
    */
   fileExtensions: Record<string, string>
+
+  /**
+   * language id → 图标名
+   */
+  languageIds: Record<string, string>
 
   /**
    * 需要在运行时匹配的文件名规则

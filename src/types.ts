@@ -1,7 +1,7 @@
 /**
  * 图标类型
  */
-export type IconType = 'file' | 'folder'
+export type IconType = 'file' | 'folder' | 'language'
 
 /**
  * 文件图标查找结果
@@ -36,9 +36,23 @@ export interface FolderIconInfo {
 }
 
 /**
+ * 语言图标查找结果
+ */
+export interface LanguageIconInfo {
+  /**
+   * 图标类型
+   */
+  type: 'language'
+  /**
+   * iconify 完整图标名（含集合前缀），如 `vscode-icons:file-type-typescript`
+   */
+  name: string
+}
+
+/**
  * 图标查找结果
  */
-export type IconInfo = FileIconInfo | FolderIconInfo
+export type IconInfo = FileIconInfo | FolderIconInfo | LanguageIconInfo
 
 /**
  * 图标集合默认图标名
@@ -114,7 +128,7 @@ export type IconSetStemRule =
  * 声明式的 `图标名 → 名称列表` 数据表，由 `transformer` 在构造查找器时展平为查表结构。
  *
  * 仅 `collect` 与 `defaults` 为必填：它们是图标名前缀与兜底图标，缺失时无法产出合法图标名。
- * 四个查找表均可选，缺省时按空表处理，调用方只需声明自己关心的部分。
+ * 五个查找表均可选，缺省时按空表处理，调用方只需声明自己关心的部分。
  *
  * 构造期只校验 `collect` 与 `defaults` 是否缺失，不校验查找表与规则的形状——后者由类型约束。
  * 非 TypeScript 消费方需自行保证数据符合本接口，否则会得到错误的查找结果，而不是抛错。
@@ -174,6 +188,19 @@ export interface IconSet {
    * @default {} 缺省时视为空表
    */
   fileStems?: Record<string, IconSetStemRule[]>
+
+  /**
+   * 图标名 → language id 列表
+   *
+   * language id 为 VS Code 的语言标识（如 `typescript`、`platformio-debug.asm`），
+   * 用于按语言查找图标，与文件路径无关。
+   *
+   * 图标名与 `fileExtensions` 一致，不含集合内前缀（`filePrefix`）。
+   * 同一 language id 被多个图标声明时，后声明者生效。
+   *
+   * @default {} 缺省时视为空表
+   */
+  languageIds?: Record<string, string[]>
 }
 
 /**
@@ -183,7 +210,7 @@ export interface IconSet {
  *
  * When `type` is not specified:
  * - If the path ends with `/`, it is treated as a folder, and the corresponding folder icon is returned.
- * - If the type cannot be determined, it first searches among file icons, then among folder icons. If neither is found, the default file icon is returned.
+ * - If the type cannot be determined, it searches among file icons, then folder icons, then language icons. If none of them match, the default file icon is returned.
  *
  * When this method cannot find the corresponding icon,
  * it returns a default icon based on the path type.
@@ -192,6 +219,11 @@ export interface IconSet {
  *
  * Non-string input (e.g. `undefined`) is treated as an empty path and resolves to the default icon.
  *
+ * When `type` is `'language'`, `input` is treated as a language id (e.g. `typescript`) instead of a path,
+ * and is matched against `IconSet.languageIds` after trimming and lower-casing.
+ * Language icons are also consulted last in the untyped inference described above, after the file and folder tables.
+ * An unknown language id resolves to the collection's default file icon.
+ *
  * 根据输入路径，查找 图标名
  *
  * 此方法不会检查路径是否真实存在，且无法准确判断路径为文件或文件夹，
@@ -199,13 +231,18 @@ export interface IconSet {
  *
  * 当未指定 `type` 时：
  * - 如果路径以 `/` 结尾，则判断为文件夹，返回对应的文件夹图标
- * - 无法判断类型时，则优先从文件图标中查找，再从文件夹图标中查找，
+ * - 无法判断类型时，则依次从文件图标、文件夹图标、语言图标中查找，
  *   如果都未找到，则返回默认文件图标
  *
  * 此方法查找不到对应的图标时，会根据路径类型，返回默认图标。
  * 无法判断为文件或文件夹时，默认返回文件图标。
  *
  * 非字符串输入（如 `undefined`）按空路径处理，会返回默认图标。
+ *
+ * 当 `type` 为 `'language'` 时，`input` 按 language id（如 `typescript`）处理而非路径，
+ * 会去除首尾空白并转为小写后，从 `IconSet.languageIds` 中查找。
+ * 上面的无类型推断也会在文件表、文件夹表之后，最后查找语言表。
+ * 未命中的 language id 会返回该图标集合的默认文件图标。
  *
  * @param input input filepath / 输入路径
  * @param type File type / 文件类型
@@ -214,6 +251,7 @@ export interface IconSet {
 export interface IconFinder {
   (input: string, type: 'file'): FileIconInfo
   (input: string, type: 'folder'): FolderIconInfo
+  (input: string, type: 'language'): LanguageIconInfo
   (input: string, type: IconType | undefined): IconInfo
   (input: string): IconInfo
 }

@@ -8,6 +8,7 @@ import { findFileIcon as vscodeFindFileIcon } from '../src/vscode-icons.js'
 
 const file = (name: string) => ({ type: 'file', name })
 const folder = (name: string, expandedName: string) => ({ type: 'folder', name, expandedName })
+const language = (name: string) => ({ type: 'language', name })
 
 describe('entry points', () => {
   it('exposes the vscode-icons finder from the root entry', () => {
@@ -95,6 +96,48 @@ describe('vscode-icons finder', () => {
       folder('vscode-icons:default-folder', 'vscode-icons:default-folder-opened'),
     )
   })
+
+  it('resolves language ids to their language icons', () => {
+    expect(vscodeFindFileIcon('typescript', 'language')).toEqual(
+      language('vscode-icons:file-type-typescript'),
+    )
+    expect(vscodeFindFileIcon('javascript', 'language')).toEqual(
+      language('vscode-icons:file-type-js'),
+    )
+    expect(vscodeFindFileIcon('typescriptreact', 'language')).toEqual(
+      language('vscode-icons:file-type-reactts'),
+    )
+  })
+
+  it('does not treat a path as a language id', () => {
+    expect(vscodeFindFileIcon('src/Button.tsx', 'language')).toEqual(
+      language('vscode-icons:default-file'),
+    )
+  })
+
+  it('resolves language ids that are carried by the language table alone', () => {
+    expect(vscodeFindFileIcon('javascriptreact', 'language')).toEqual(
+      language('vscode-icons:file-type-reactjs'),
+    )
+    expect(vscodeFindFileIcon('home-assistant', 'language')).toEqual(
+      language('vscode-icons:file-type-homeassistant'),
+    )
+  })
+
+  it('matches language ids the upstream data declares in mixed case', () => {
+    expect(vscodeFindFileIcon('Swagger', 'language')).toEqual(
+      language('vscode-icons:file-type-swagger'),
+    )
+    expect(vscodeFindFileIcon('mermaid.c4Diagram', 'language')).toEqual(
+      language('vscode-icons:file-type-mermaid'),
+    )
+  })
+
+  it('returns the default file icon for an unknown language id', () => {
+    expect(vscodeFindFileIcon('unknown-lang', 'language')).toEqual(
+      language('vscode-icons:default-file'),
+    )
+  })
 })
 
 describe('catppuccin finder', () => {
@@ -115,5 +158,18 @@ describe('catppuccin finder', () => {
     expect(catppuccinFindFileIcon('unknown-folder', 'folder')).toEqual(
       folder('catppuccin:folder', 'catppuccin:folder-open'),
     )
+  })
+
+  it('resolves language ids to their language icons', () => {
+    expect(catppuccinFindFileIcon('typescript', 'language')).toEqual(
+      language('catppuccin:typescript'),
+    )
+    expect(catppuccinFindFileIcon('typescriptreact', 'language')).toEqual(
+      language('catppuccin:typescript-react'),
+    )
+  })
+
+  it('returns the default file icon for an unknown language id', () => {
+    expect(catppuccinFindFileIcon('unknown-lang', 'language')).toEqual(language('catppuccin:file'))
   })
 })

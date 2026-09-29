@@ -88,6 +88,8 @@ const myIcons: IconSet = {
   fileExtensions: { typescript: ['ts', 'tsx'] },
   // Icon name -> file name rules
   fileStems: { dotenv: [{ name: '.env', extensions: '*' }] },
+  // Icon name -> VS Code language ids
+  languageIds: { typescript: ['typescript', 'ts'] },
 }
 
 const findIcon = createFinder(myIcons)
@@ -99,7 +101,7 @@ findIcon('src/')
 // { type: 'folder', name: 'my-icons:folder-src', expandedName: 'my-icons:folder-src-opened' }
 ```
 
-Only `collect` and `defaults` are required: a collection prefix and a fallback icon, without which no icon name can be assembled. The four lookup tables are optional and default to empty, so a set only needs to declare the parts it uses.
+Only `collect` and `defaults` are required: a collection prefix and a fallback icon, without which no icon name can be assembled. The five lookup tables are optional and default to empty, so a set only needs to declare the parts it uses.
 
 `createFinder` is also exported from `find-file-icon/core`, which carries the lookup logic alone, with no icon set data attached. Both built-in sets are published as raw `IconSet` definitions under `find-file-icon/icon-set/vscode-icons` and `find-file-icon/icon-set/catppuccin`, so a custom set can extend one instead of starting from scratch:
 
@@ -119,9 +121,9 @@ const findIcon = createFinder({
 
 The finder exported by the root entry and by every icon set subpath.
 
-- `input: string` — A file path or file name. It does not have to exist on disk.
-- `type?: 'file' | 'folder'` — Whether `input` is a file or a folder. Pass it whenever you already know: without it, the finder has to infer the type from the path.
-- Returns `FileIconInfo` for `type: 'file'`, `FolderIconInfo` for `type: 'folder'`, and `IconInfo` when `type` is omitted.
+- `input: string` — A file path or file name. It does not have to exist on disk. Under `type: 'language'` it is a language id such as `typescript` instead.
+- `type?: 'file' | 'folder' | 'language'` — What `input` is: a file, a folder, or a language id. Pass it whenever you already know: without it, the finder has to infer the type from the path, consulting the file, folder and language tables in that order.
+- Returns `FileIconInfo` for `type: 'file'`, `FolderIconInfo` for `type: 'folder'`, `LanguageIconInfo` for `type: 'language'`, and `IconInfo` when `type` is omitted.
 
 ```ts
 findFileIcon('src/index.ts', 'file')
@@ -129,6 +131,9 @@ findFileIcon('src/index.ts', 'file')
 
 findFileIcon('src', 'folder')
 // { type: 'folder', name: 'vscode-icons:folder-type-src', expandedName: 'vscode-icons:folder-type-src-opened' }
+
+findFileIcon('typescript', 'language')
+// { type: 'language', name: 'vscode-icons:file-type-typescript' }
 ```
 
 The finder never returns `null` or `undefined`: a path that matches nothing is resolved through the default icons. Non-string input is treated as an empty path and resolves the same way.
@@ -137,20 +142,21 @@ The finder never returns `null` or `undefined`: a path that matches nothing is r
 
 Builds an `IconFinder` from an `IconSet`. The definition is flattened once, at construction, into lookup tables; every later call is a table read. See [Bring your own icon set](#bring-your-own-icon-set).
 
-Construction is the only place this library throws: a set missing `collect` or `defaults` fails here with a `TypeError` naming the missing fields, rather than surfacing later as an `undefined:file` icon name. The check covers those required fields only — the shape of the four lookup tables and of each `IconSetStemRule` is a TypeScript-level contract, not a runtime one, so a definition that comes from JSON or plain JS and does not match `IconSet` may resolve to wrong icons instead of throwing.
+Construction is the only place this library throws: a set missing `collect` or `defaults` fails here with a `TypeError` naming the missing fields, rather than surfacing later as an `undefined:file` icon name. The check covers those required fields only — the shape of the five lookup tables and of each `IconSetStemRule` is a TypeScript-level contract, not a runtime one, so a definition that comes from JSON or plain JS and does not match `IconSet` may resolve to wrong icons instead of throwing.
 
 ### Types
 
-| Type              | Description                                              |
-| ----------------- | -------------------------------------------------------- |
-| `IconType`        | `'file' \| 'folder'`                                     |
-| `FileIconInfo`    | `{ type: 'file', name: string }`                         |
-| `FolderIconInfo`  | `{ type: 'folder', name: string, expandedName: string }` |
-| `IconInfo`        | `FileIconInfo \| FolderIconInfo`                         |
-| `IconFinder`      | The finder signature, overloaded on `type`               |
-| `IconSet`         | Icon set definition consumed by `createFinder`           |
-| `IconSetDefaults` | Default icon names: `{ file, folder, folderExpanded? }`  |
-| `IconSetStemRule` | File name rule: `{ name, extensions, exact? }`           |
+| Type               | Description                                              |
+| ------------------ | -------------------------------------------------------- |
+| `IconType`         | `'file' \| 'folder' \| 'language'`                       |
+| `FileIconInfo`     | `{ type: 'file', name: string }`                         |
+| `FolderIconInfo`   | `{ type: 'folder', name: string, expandedName: string }` |
+| `LanguageIconInfo` | `{ type: 'language', name: string }`                     |
+| `IconInfo`         | `FileIconInfo \| FolderIconInfo \| LanguageIconInfo`     |
+| `IconFinder`       | The finder signature, overloaded on `type`               |
+| `IconSet`          | Icon set definition consumed by `createFinder`           |
+| `IconSetDefaults`  | Default icon names: `{ file, folder, folderExpanded? }`  |
+| `IconSetStemRule`  | File name rule: `{ name, extensions, exact? }`           |
 
 ## Matching behavior
 
@@ -163,10 +169,12 @@ Matching runs on the last segment of the input, lowercased, after `\` and repeat
 When `type` is omitted:
 
 1. A trailing separator settles the question — the input is a folder, and only the folder tables are searched.
-2. Otherwise the file tables are searched first, then the folder tables.
+2. Otherwise the file tables are searched first, then the folder tables, and finally the language table.
 3. If nothing matches, the default file icon is returned.
 
 Passing `type` removes the guesswork, and it also picks the fallback: an unmatched name under `type: 'folder'` yields the default folder icon rather than the default file icon.
+
+Passing `type: 'language'` reads the input as a language id instead of a path, which is the only way to skip path parsing entirely. The language table is also consulted last in the inference above, so a language id such as `typescript` resolves to its language icon even when it names no real file or folder. An unmatched language id falls back to the default file icon, as does non-string input.
 
 ### Lookup order
 
@@ -177,6 +185,8 @@ For files:
 3. Extension match in `fileExtensions`. The scan starts at the first `.` and moves right, so the longest suffix wins: `bundle.js.map` matches `js.map` before `map`.
 
 Folders match on the folder name alone, exactly.
+
+Languages match on the language id alone, case-insensitively: both the declared ids and the input are trimmed and lower-cased before the lookup. The input is not parsed as a path, so `src/typescript` finds nothing.
 
 ### Stem rules
 
@@ -199,7 +209,7 @@ Folders match on the folder name alone, exactly.
 | `vscode-icons` | `vscode-icons`    | `default-file` | `default-folder` | `-opened`       |
 | `catppuccin`   | `catppuccin`      | `file`         | `folder`         | `-open`         |
 
-Default icons carry the collection prefix like every other result, for example `vscode-icons:default-file`.
+Default icons carry the collection prefix like every other result, for example `vscode-icons:default-file`. An unmatched language id resolves to the default file icon, with `type: 'language'`.
 
 ## Development
 

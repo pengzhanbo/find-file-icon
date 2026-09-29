@@ -88,6 +88,8 @@ const myIcons: IconSet = {
   fileExtensions: { typescript: ['ts', 'tsx'] },
   // 图标名 -> 文件名规则
   fileStems: { dotenv: [{ name: '.env', extensions: '*' }] },
+  // 图标名 -> VS Code language id
+  languageIds: { typescript: ['typescript', 'ts'] },
 }
 
 const findIcon = createFinder(myIcons)
@@ -99,7 +101,7 @@ findIcon('src/')
 // { type: 'folder', name: 'my-icons:folder-src', expandedName: 'my-icons:folder-src-opened' }
 ```
 
-其中只有 `collect` 与 `defaults` 为必填：集合前缀与兜底图标，缺了它们就拼不出合法的图标名。四张查找表均可选，缺省即空表，因此只需声明用得到的部分。
+其中只有 `collect` 与 `defaults` 为必填：集合前缀与兜底图标，缺了它们就拼不出合法的图标名。五张查找表均可选，缺省即空表，因此只需声明用得到的部分。
 
 `createFinder` 也可从 `find-file-icon/core` 导入，该入口只含查找逻辑，不附带任何图标集合数据。内置的两套图标集合以原始的 `IconSet` 定义发布于 `find-file-icon/icon-set/vscode-icons` 与 `find-file-icon/icon-set/catppuccin`，自定义集合可以直接在其基础上扩展，而不必从零编写：
 
@@ -119,9 +121,9 @@ const findIcon = createFinder({
 
 根入口与各个图标集合子路径导出的查找器。
 
-- `input: string` — 文件路径或文件名，不必在磁盘上真实存在。
-- `type?: 'file' | 'folder'` — 声明 `input` 是文件还是文件夹。已知类型时请显式传入：不传的话，查找器只能根据路径自行推断。
-- 返回值：`type` 为 `'file'` 时是 `FileIconInfo`，为 `'folder'` 时是 `FolderIconInfo`，未传入时是 `IconInfo`。
+- `input: string` — 文件路径或文件名，不必在磁盘上真实存在。当 `type` 为 `'language'` 时，它改为表示 language id，如 `typescript`。
+- `type?: 'file' | 'folder' | 'language'` — 声明 `input` 是文件、文件夹还是 language id。已知类型时请显式传入：不传的话，查找器只能根据路径自行推断，依次查文件表、文件夹表与语言表。
+- 返回值：`type` 为 `'file'` 时是 `FileIconInfo`，为 `'folder'` 时是 `FolderIconInfo`，为 `'language'` 时是 `LanguageIconInfo`，未传入时是 `IconInfo`。
 
 ```ts
 findFileIcon('src/index.ts', 'file')
@@ -129,6 +131,9 @@ findFileIcon('src/index.ts', 'file')
 
 findFileIcon('src', 'folder')
 // { type: 'folder', name: 'vscode-icons:folder-type-src', expandedName: 'vscode-icons:folder-type-src-opened' }
+
+findFileIcon('typescript', 'language')
+// { type: 'language', name: 'vscode-icons:file-type-typescript' }
 ```
 
 查找器不会返回 `null` 或 `undefined`：匹配不到任何规则的路径会经由默认图标兜底；非字符串输入按空路径处理，同样如此。
@@ -137,20 +142,21 @@ findFileIcon('src', 'folder')
 
 由 `IconSet` 构建 `IconFinder`。图标集合只在构造时展平一次，此后每次调用都是查表。参见[自定义图标集合](#自定义图标集合)。
 
-构造是整个库唯一会抛错的地方：缺少 `collect` 或 `defaults` 的图标集合会在此处以 `TypeError` 报告缺失字段，而不是等到某次查找时冒出一个 `undefined:file` 的图标名。校验只覆盖这些必填字段——四张查找表与每条 `IconSetStemRule` 的形状属于 TypeScript 类型契约，运行时不做校验，因此来自 JSON 或纯 JS 且不符合 `IconSet` 的定义可能解析出错误图标，而不是抛错。
+构造是整个库唯一会抛错的地方：缺少 `collect` 或 `defaults` 的图标集合会在此处以 `TypeError` 报告缺失字段，而不是等到某次查找时冒出一个 `undefined:file` 的图标名。校验只覆盖这些必填字段——五张查找表与每条 `IconSetStemRule` 的形状属于 TypeScript 类型契约，运行时不做校验，因此来自 JSON 或纯 JS 且不符合 `IconSet` 的定义可能解析出错误图标，而不是抛错。
 
 ### 类型
 
-| 类型              | 说明                                                     |
-| ----------------- | -------------------------------------------------------- |
-| `IconType`        | `'file' \| 'folder'`                                     |
-| `FileIconInfo`    | `{ type: 'file', name: string }`                         |
-| `FolderIconInfo`  | `{ type: 'folder', name: string, expandedName: string }` |
-| `IconInfo`        | `FileIconInfo \| FolderIconInfo`                         |
-| `IconFinder`      | 查找器签名，依 `type` 提供重载                           |
-| `IconSet`         | `createFinder` 消费的图标集合定义                        |
-| `IconSetDefaults` | 默认图标名：`{ file, folder, folderExpanded? }`          |
-| `IconSetStemRule` | 文件名规则：`{ name, extensions, exact? }`               |
+| 类型               | 说明                                                     |
+| ------------------ | -------------------------------------------------------- |
+| `IconType`         | `'file' \| 'folder' \| 'language'`                       |
+| `FileIconInfo`     | `{ type: 'file', name: string }`                         |
+| `FolderIconInfo`   | `{ type: 'folder', name: string, expandedName: string }` |
+| `LanguageIconInfo` | `{ type: 'language', name: string }`                     |
+| `IconInfo`         | `FileIconInfo \| FolderIconInfo \| LanguageIconInfo`     |
+| `IconFinder`       | 查找器签名，依 `type` 提供重载                           |
+| `IconSet`          | `createFinder` 消费的图标集合定义                        |
+| `IconSetDefaults`  | 默认图标名：`{ file, folder, folderExpanded? }`          |
+| `IconSetStemRule`  | 文件名规则：`{ name, extensions, exact? }`               |
 
 ## 匹配行为
 
@@ -163,10 +169,12 @@ findFileIcon('src', 'folder')
 未指定 `type` 时：
 
 1. 结尾的分隔符足以定论——输入是文件夹，此时只查文件夹表。
-2. 否则先查文件表，再查文件夹表。
+2. 否则先查文件表，再查文件夹表，最后查语言表。
 3. 都没命中，返回默认文件图标。
 
 显式传入 `type` 可以免去这层推断，同时也决定了兜底图标：`type: 'folder'` 下未命名的路径返回默认文件夹图标，而非默认文件图标。
+
+传入 `type: 'language'` 会把输入当作 language id 而非路径，这是唯一跳过路径解析的方式。语言表同样位于上面推断链的末端，因此 `typescript` 这类并非真实文件或文件夹名的标识也能命中对应的语言图标。未命中的 language id 会回落到默认文件图标，非字符串输入同样如此。
 
 ### 查找顺序
 
@@ -177,6 +185,8 @@ findFileIcon('src', 'folder')
 3. `fileExtensions` 中的扩展名匹配。从第一个 `.` 开始向右扫描，最长后缀优先：`bundle.js.map` 先命中 `js.map`，再轮到 `map`。
 
 文件夹则仅按文件夹名精确匹配。
+
+语言仅按 language id 匹配，且大小写不敏感：声明的 id 与输入都会先去除首尾空白并转为小写再比对。输入不会被当作路径解析，因此 `src/typescript` 查不到任何结果。
 
 ### 文件名规则
 
@@ -199,7 +209,7 @@ findFileIcon('src', 'folder')
 | `vscode-icons` | `vscode-icons` | `default-file` | `default-folder` | `-opened`  |
 | `catppuccin`   | `catppuccin`   | `file`         | `folder`         | `-open`    |
 
-与其它结果一样，默认图标也带集合前缀，例如 `vscode-icons:default-file`。
+与其它结果一样，默认图标也带集合前缀，例如 `vscode-icons:default-file`。未命中的 language id 会回落到默认文件图标，`type` 仍为 `'language'`。
 
 ## 开发
 

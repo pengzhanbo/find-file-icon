@@ -2,12 +2,14 @@ import type {
   FileIconInfo,
   FolderIconInfo,
   IconInfo,
+  LanguageIconInfo,
   IconSet,
+  IconSetDefaults,
   IconFinder,
   IconType,
 } from '../types.js'
 import { parseFilePath } from './parse-input.js'
-import { transformer } from './transformer.js'
+import { normalizeLanguageId, transformer } from './transformer.js'
 
 /**
  * 检查查找表是否包含指定键
@@ -27,7 +29,7 @@ function hasOwn(obj: Record<string, string>, key: string): boolean {
  * 收集图标集合中缺失的必填字段
  *
  * 只有 `collect` 与 `defaults` 是必填项：二者是图标名前缀与兜底图标，
- * 缺失时会产生 `undefined:file` 这类非法图标名。四个查找表均可选，缺省时按空表处理。
+ * 缺失时会产生 `undefined:file` 这类非法图标名。五个查找表均可选，缺省时按空表处理。
  *
  * @param iconSet - 图标集合（可能不完整）
  * @returns 缺失字段名列表，必填字段齐全时为空数组
@@ -47,6 +49,45 @@ function collectMissingFields(iconSet: Partial<IconSet>): string[] {
 }
 
 /**
+ * 构造三类默认图标
+ *
+ * @param collect - 图标集合前缀
+ * @param defaults - 图标集合默认图标名
+ * @param folderExpandedSuffix - 文件夹图标展开态后缀
+ * @returns 文件 / 文件夹 / 语言三类默认图标
+ */
+function createDefaultIcons(
+  collect: string,
+  defaults: IconSetDefaults,
+  folderExpandedSuffix: string,
+): { file: FileIconInfo; folder: FolderIconInfo; language: LanguageIconInfo } {
+  // `folderExpanded` 为空字符串时视为未配置，回落到 `folder` + 展开后缀，
+  // 否则会拼出 `collect:` 这类非法图标名
+  const configuredFolderExpanded = defaults.folderExpanded ?? ''
+  const defaultFolderExpanded =
+    configuredFolderExpanded.length > 0
+      ? configuredFolderExpanded
+      : defaults.folder + folderExpandedSuffix
+
+  return {
+    file: {
+      type: 'file',
+      name: `${collect}:${defaults.file}`,
+    },
+    folder: {
+      type: 'folder',
+      name: `${collect}:${defaults.folder}`,
+      expandedName: `${collect}:${defaultFolderExpanded}`,
+    },
+    // language id 未命中时回落到默认文件图标名，与 VS Code 在语言未登记时的表现一致
+    language: {
+      type: 'language',
+      name: `${collect}:${defaults.file}`,
+    },
+  }
+}
+
+/**
  * 创建单一图标集下的文件图标查找器
  *
  * 构造时通过 `transformer` 将声明式图标集合展平为查找表，
@@ -61,12 +102,10 @@ export function createFinder(iconSet: IconSet): IconFinder {
   const missingFields = collectMissingFields(iconSet)
   if (missingFields.length > 0) {
     const fields = missingFields.join(', ')
-    throw new TypeError(
-      `[find-file-icon] Invalid IconSet: missing ${fields} / 图标集合缺少必填字段：${fields}`,
-    )
+    throw new TypeError(`[find-file-icon] Invalid IconSet: missing ${fields}`)
   }
 
-  const { fileNames, fileExtensions, fileStems, folderNames } = transformer(iconSet)
+  const { fileNames, fileExtensions, fileStems, folderNames, languageIds } = transformer(iconSet)
   const {
     collect,
     defaults,
@@ -75,23 +114,7 @@ export function createFinder(iconSet: IconSet): IconFinder {
     folderPrefix = '',
   } = iconSet
 
-  // 默认图标是跨调用共享的单例，冻结后调用方的原地修改不会污染后续查找
-  const defaultFileIcon: FileIconInfo = Object.freeze<FileIconInfo>({
-    type: 'file',
-    name: `${collect}:${defaults.file}`,
-  })
-  // `folderExpanded` 为空字符串时视为未配置，回落到 `folder` + 展开后缀，
-  // 否则会拼出 `collect:` 这类非法图标名
-  const configuredFolderExpanded = defaults.folderExpanded ?? ''
-  const defaultFolderExpanded =
-    configuredFolderExpanded.length > 0
-      ? configuredFolderExpanded
-      : defaults.folder + folderExpandedSuffix
-  const defaultFolderIcon: FolderIconInfo = Object.freeze<FolderIconInfo>({
-    type: 'folder',
-    name: `${collect}:${defaults.folder}`,
-    expandedName: `${collect}:${defaultFolderExpanded}`,
-  })
+  const { file, folder, language } = createDefaultIcons(collect, defaults, folderExpandedSuffix)
 
   /**
    * 查找文件夹图标
@@ -183,27 +206,55 @@ export function createFinder(iconSet: IconSet): IconFinder {
     return undefined
   }
 
-  const finder = (input: string, type?: IconType): IconInfo => {
+  /**
+   * 查找语言图标
+   *
+   * 语言图标与文件图标同属一个图标族，图标名同样由集合前缀与文件前缀拼接而成。
+   * language id 大小写不敏感，这里与建表时使用同一套归一化规则。
+   *
+   * @param input - 原始 language id，可含首尾空白
+   * @returns 语言图标信息，未命中时为 `undefined`
+   */
+  const findLanguage = (input: string): LanguageIconInfo | undefined => {
+    const languageId = normalizeLanguageId(input)
+    if (!hasOwn(languageIds, languageId)) {
+      return undefined
+    }
+
+    // 已由 hasOwn 判定命中，这里断言取值非空，与 findFile 的取值风格保持一致
+    return {
+      type: 'language',
+      name: `${collect}:${filePrefix}${languageIds[languageId]!}`,
+    }
+  }
+
+  const iconFinder = (input: string, type?: IconType): IconInfo => {
+    // language id 与路径无关，不做路径解析；
+    // 与 `parseFilePath` 一致，非字符串输入按空标识处理，回落到默认图标
+    if (type === 'language') {
+      return findLanguage(typeof input === 'string' ? input : '') ?? { ...language }
+    }
+
     const { name, isFolder } = parseFilePath(input)
 
     // type 显式指定时以调用方为准，未命中则回落到该类型的默认图标
     if (type === 'folder') {
-      return findFolder(name) ?? defaultFolderIcon
+      return findFolder(name) ?? { ...folder }
     }
 
     if (type === 'file') {
-      return findFile(name) ?? defaultFileIcon
+      return findFile(name) ?? { ...file }
     }
 
     // 未指定 type：结尾分隔符已能确定是文件夹时只查文件夹
     if (isFolder) {
-      return findFolder(name) ?? defaultFolderIcon
+      return findFolder(name) ?? { ...folder }
     }
 
-    // 类型不确定：按 文件 → 文件夹 → 默认文件图标 的顺序推断
-    return findFile(name) ?? findFolder(name) ?? defaultFileIcon
+    // 类型不确定：按 文件 → 文件夹 → 语言 → 默认文件图标 的顺序推断
+    return findFile(name) ?? findFolder(name) ?? findLanguage(name) ?? { ...file }
   }
 
-  // 实现签名无法同时满足 IconFinder 的三组重载，这里的断言是必要的
-  return finder as IconFinder
+  // 实现签名无法同时满足 IconFinder 的四组重载，这里的断言是必要的
+  return iconFinder as IconFinder
 }

@@ -166,21 +166,8 @@ export const vscodeIconsIgnores: string[] = [
   'file-type-zeit',
 
   // 关联已由现有图标覆盖, 可能存在覆盖或冲突
-  'file-type-dal',
-  'file-type-dotjs',
-  'file-type-gamemaker81',
-  'file-type-homeassistant',
   // 'file-type-html',
-  'file-type-less',
-  'file-type-mvtcss',
-  'file-type-mvtjs',
-  'file-type-postcss',
-  'file-type-processinglang',
-  'file-type-reactjs',
-  'file-type-slangacademic',
   'file-type-slang',
-  'file-type-vba',
-  'file-type-vlang',
 
   // 特殊图标
   'default-root-folder',

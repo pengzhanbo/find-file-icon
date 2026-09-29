@@ -61,17 +61,18 @@ export const iconSetSources: IconSetSource[] = [
  * @returns 图标名列表
  */
 export function collectUsedIcons(iconSet: IconSet): string[] {
-  const { fileNames, fileExtensions, fileStems, folderNames } = transformer(iconSet)
+  const { fileNames, fileExtensions, fileStems, folderNames, languageIds } = transformer(iconSet)
   const filePrefix = iconSet.filePrefix ?? ''
   const folderPrefix = iconSet.folderPrefix ?? ''
   const folderExpandedSuffix = iconSet.folderExpandedSuffix ?? ''
   const { defaults } = iconSet
   const icons: Set<string> = new Set()
 
-  // 文件图标：具名文件、文件扩展名、文件名规则所引用的图标
+  // 文件图标：具名文件、文件扩展名、文件名规则与 language id 所引用的图标
   const fileIcons: string[] = [
     ...Object.values(fileNames),
     ...Object.values(fileExtensions),
+    ...Object.values(languageIds),
     ...fileStems.map((stem) => stem.icon),
   ]
   for (const icon of fileIcons) {

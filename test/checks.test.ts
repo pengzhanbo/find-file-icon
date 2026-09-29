@@ -102,6 +102,28 @@ describe('findDuplicateMatches', () => {
     // 通配规则还能命中 `.env.<任意后缀>`，因此只有 `.env` 本身被具名文件抢占
     expect(matches).toEqual([{ kind: 'fileStems', name: '.env', icon: 'env', winner: 'other' }])
   })
+
+  it('reports a language id declared by two icons', () => {
+    const matches = findDuplicateMatches({
+      ...base,
+      languageIds: { alpha: ['typescript'], beta: ['typescript'] },
+    })
+
+    expect(matches).toEqual([
+      { kind: 'languageIds', name: 'typescript', icon: 'alpha', winner: 'beta' },
+    ])
+  })
+
+  it('compares language ids case-insensitively, as the lookup does', () => {
+    const matches = findDuplicateMatches({
+      ...base,
+      languageIds: { alpha: ['TypeScript'], beta: ['typescript'] },
+    })
+
+    expect(matches).toEqual([
+      { kind: 'languageIds', name: 'typescript', icon: 'alpha', winner: 'beta' },
+    ])
+  })
 })
 
 describe('findShadowedStems', () => {
@@ -200,6 +222,47 @@ describe('findUnmatchableEntries', () => {
     const entries = findUnmatchableEntries({
       ...base,
       fileStems: { any: [{ name: '', extensions: ['ts'] }] },
+    })
+
+    expect(entries).toEqual([])
+  })
+
+  it('reports a language id with leading or trailing whitespace', () => {
+    const entries = findUnmatchableEntries({
+      ...base,
+      languageIds: { typescript: ['ts', ' ts '] },
+    })
+
+    expect(entries).toEqual([
+      {
+        kind: 'languageIds',
+        icon: 'typescript',
+        entry: "' ts '",
+        reason: '含首尾空白，而查找前输入已去除首尾空白',
+      },
+    ])
+  })
+
+  it('reports an empty language id, which over-matches the empty input', () => {
+    const entries = findUnmatchableEntries({
+      ...base,
+      languageIds: { typescript: [''] },
+    })
+
+    expect(entries).toEqual([
+      {
+        kind: 'languageIds',
+        icon: 'typescript',
+        entry: "''",
+        reason: '空 id 会命中空输入（含非字符串输入），遮蔽默认图标',
+      },
+    ])
+  })
+
+  it('accepts language ids in any case, since both sides are normalized', () => {
+    const entries = findUnmatchableEntries({
+      ...base,
+      languageIds: { cangjie: ['Cangjie'] },
     })
 
     expect(entries).toEqual([])

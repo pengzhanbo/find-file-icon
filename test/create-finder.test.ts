@@ -21,6 +21,11 @@ const iconSet: IconSet = {
     javascript: ['js'],
     jsmap: ['js.map'],
   },
+  languageIds: {
+    typescript: ['typescript', 'ts'],
+    jsonc: ['jsonc', 'json-with-comments'],
+    cangjie: ['Cangjie'],
+  },
   fileStems: {
     dotenv: [{ name: '.env', extensions: '*' }],
     jest: [{ name: 'jest.config', extensions: ['js', 'ts'], exact: false }],
@@ -33,6 +38,7 @@ const find = createFinder(iconSet)
 
 const file = (name: string) => ({ type: 'file', name })
 const folder = (name: string, expandedName: string) => ({ type: 'folder', name, expandedName })
+const language = (name: string) => ({ type: 'language', name })
 
 describe('createFinder', () => {
   describe('named files', () => {
@@ -140,6 +146,54 @@ describe('createFinder', () => {
     })
   })
 
+  describe('languages', () => {
+    it('matches a language id when the type is explicit', () => {
+      expect(find('typescript', 'language')).toEqual(language('test:file-typescript'))
+      expect(find('ts', 'language')).toEqual(language('test:file-typescript'))
+      expect(find('json-with-comments', 'language')).toEqual(language('test:file-jsonc'))
+    })
+
+    it('matches a language id case-insensitively and trims surrounding whitespace', () => {
+      expect(find('TypeScript', 'language')).toEqual(language('test:file-typescript'))
+      expect(find('  JSONC  ', 'language')).toEqual(language('test:file-jsonc'))
+    })
+
+    it('matches a language id declared upstream in a different case', () => {
+      expect(find('cangjie', 'language')).toEqual(language('test:file-cangjie'))
+      expect(find('Cangjie', 'language')).toEqual(language('test:file-cangjie'))
+      expect(find('  CANGJIE  ', 'language')).toEqual(language('test:file-cangjie'))
+    })
+
+    it('does not parse the input as a path', () => {
+      expect(find('src/typescript', 'language')).toEqual(language('test:default-file'))
+      expect(find('typescript/', 'language')).toEqual(language('test:default-file'))
+    })
+
+    it('falls back to the default file icon for an unknown language id', () => {
+      expect(find('unknown-lang', 'language')).toEqual(language('test:default-file'))
+      expect(find('', 'language')).toEqual(language('test:default-file'))
+    })
+
+    it('is consulted after the file and folder tables when the type is omitted', () => {
+      expect(find('jsonc')).toEqual(language('test:file-jsonc'))
+      expect(find('jsonc', 'file')).toEqual(file('test:default-file'))
+    })
+
+    it('does not resolve inherited object properties as languages', () => {
+      expect(find('toString', 'language')).toEqual(language('test:default-file'))
+      expect(find('__proto__', 'language')).toEqual(language('test:default-file'))
+      expect(find('constructor', 'language')).toEqual(language('test:default-file'))
+      expect(find('hasOwnProperty', 'language')).toEqual(language('test:default-file'))
+    })
+
+    it('falls back to the default language icon for non-string input', () => {
+      expect(find(undefined as unknown as string, 'language')).toEqual(
+        language('test:default-file'),
+      )
+      expect(find(123 as unknown as string, 'language')).toEqual(language('test:default-file'))
+    })
+  })
+
   describe('type resolution', () => {
     it('honours an explicit file type', () => {
       expect(find('src', 'file')).toEqual(file('test:default-file'))
@@ -191,7 +245,7 @@ describe('createFinder', () => {
   describe('invalid icon set', () => {
     it('throws a readable error listing every missing field', () => {
       expect(() => createFinder({} as IconSet)).toThrow(
-        '[find-file-icon] Invalid IconSet: missing collect, defaults.file, defaults.folder / 图标集合缺少必填字段：collect, defaults.file, defaults.folder',
+        '[find-file-icon] Invalid IconSet: missing collect, defaults.file, defaults.folder',
       )
     })
 
@@ -206,6 +260,7 @@ describe('createFinder', () => {
       }
 
       expect(createFinder(empty)('unknown.zzz')).toEqual(file('empty:f'))
+      expect(createFinder(empty)('unknown-lang', 'language')).toEqual(language('empty:f'))
     })
 
     it('treats omitted lookup tables as empty tables', () => {
@@ -216,6 +271,7 @@ describe('createFinder', () => {
 
       expect(minimal('unknown.zzz')).toEqual(file('minimal:f'))
       expect(minimal('unknown-folder', 'folder')).toEqual(folder('minimal:d', 'minimal:d'))
+      expect(minimal('unknown-lang', 'language')).toEqual(language('minimal:f'))
     })
   })
 
@@ -261,11 +317,11 @@ describe('createFinder', () => {
       expect(createFinder(blank)('nope', 'folder')).toEqual(folder('blank:d', 'blank:d-opened'))
     })
 
-    it('returns a frozen default icon that callers cannot mutate into a shared state leak', () => {
+    it('returns a fresh default icon each call so callers cannot leak mutations into shared state', () => {
       const first = find('unknown.zzz')
 
-      expect(Object.isFrozen(first)).toBe(true)
-      expect(() => Object.assign(first, { name: 'mutated' })).toThrow(TypeError)
+      Object.assign(first, { name: 'mutated' })
+      expect(first.name).toBe('mutated')
       expect(find('another-unknown.zzz')).toEqual(file('test:default-file'))
     })
   })

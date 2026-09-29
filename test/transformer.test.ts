@@ -9,6 +9,7 @@ function createIconSet(fileStems: IconSet['fileStems'] = {}): IconSet {
     fileNames: { alpha: ['Alpha', '.alpharc'] },
     folderNames: { beta: ['Beta', 'betas'] },
     fileExtensions: { gamma: ['gamma'] },
+    languageIds: { iota: ['iota', 'iota-alt'] },
     fileStems,
   }
 }
@@ -20,6 +21,7 @@ describe('transformer', () => {
     expect(resolved.fileNames).toEqual({ 'Alpha': 'alpha', '.alpharc': 'alpha' })
     expect(resolved.folderNames).toEqual({ Beta: 'beta', betas: 'beta' })
     expect(resolved.fileExtensions).toEqual({ gamma: 'gamma' })
+    expect(resolved.languageIds).toEqual({ 'iota': 'iota', 'iota-alt': 'iota' })
   })
 
   it('creates prototype-less lookup maps', () => {
@@ -28,6 +30,27 @@ describe('transformer', () => {
     expect(Object.getPrototypeOf(resolved.fileNames)).toBeNull()
     expect(Object.getPrototypeOf(resolved.folderNames)).toBeNull()
     expect(Object.getPrototypeOf(resolved.fileExtensions)).toBeNull()
+    expect(Object.getPrototypeOf(resolved.languageIds)).toBeNull()
+  })
+
+  it('lets the later icon win when a language id is declared twice', () => {
+    const resolved = transformer({
+      collect: 'test',
+      defaults: { file: 'default-file', folder: 'default-folder' },
+      languageIds: { first: ['shared'], second: ['shared'] },
+    })
+
+    expect(resolved.languageIds).toEqual({ shared: 'second' })
+  })
+
+  it('normalizes language ids, which are matched case-insensitively', () => {
+    const resolved = transformer({
+      collect: 'test',
+      defaults: { file: 'default-file', folder: 'default-folder' },
+      languageIds: { cangjie: ['Cangjie'], swagger: [' Swagger '] },
+    })
+
+    expect(resolved.languageIds).toEqual({ cangjie: 'cangjie', swagger: 'swagger' })
   })
 
   it('expands exact stem rules into named files', () => {
@@ -82,6 +105,7 @@ describe('transformer', () => {
     expect(resolved.fileNames).toEqual({})
     expect(resolved.folderNames).toEqual({})
     expect(resolved.fileExtensions).toEqual({})
+    expect(resolved.languageIds).toEqual({})
     expect(resolved.fileStems).toEqual([])
   })
 

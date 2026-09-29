@@ -1,14 +1,14 @@
 import type { ResolvedIconSetFileStem } from '../src/core/internal-types.js'
 import type { IconSet } from '../src/types.js'
 import { createFinder } from '../src/core/create-finder.js'
-import { transformer } from '../src/core/transformer.js'
+import { normalizeLanguageId, transformer } from '../src/core/transformer.js'
 
 /**
  * 重复匹配导致的图标覆盖
  */
 export interface DuplicateMatch {
   /** 声明来源 */
-  kind: 'fileNames' | 'fileExtensions' | 'folderNames' | 'fileStems'
+  kind: 'fileNames' | 'fileExtensions' | 'folderNames' | 'fileStems' | 'languageIds'
   /** 参与匹配的名称 */
   name: string
   /** 声明方图标名，会被覆盖，永远不会生效 */
@@ -93,7 +93,7 @@ export function partitionUnusedIcons(
  * 查找重复匹配导致图标被覆盖的声明
  *
  * 覆盖分两类：
- * 1. 构建期：具名文件、文件扩展名、文件夹名之间存在同名映射，
+ * 1. 构建期：具名文件、文件扩展名、文件夹名、language id 之间存在同名映射，
  *    以及精确匹配的规则展开后的文件名与具名文件同名。`transformer` 只保留最后一个声明。
  * 2. 运行期：文件名规则按声明顺序匹配，先声明的规则会抢占后声明规则的目标文件名。
  *
@@ -101,7 +101,7 @@ export function partitionUnusedIcons(
  * @returns 被覆盖的声明列表
  */
 export function findDuplicateMatches(iconSet: IconSet): DuplicateMatch[] {
-  const { fileNames, fileExtensions, folderNames, fileStems } = transformer(iconSet)
+  const { fileNames, fileExtensions, folderNames, languageIds, fileStems } = transformer(iconSet)
   const matches: DuplicateMatch[] = []
 
   // 声明方与最终生效方不一致，说明该声明被其它声明覆盖
@@ -132,6 +132,13 @@ export function findDuplicateMatches(iconSet: IconSet): DuplicateMatch[] {
   for (const [icon, names] of Object.entries(iconSet.folderNames ?? {})) {
     for (const name of names) {
       compare('folderNames', name, icon, folderNames)
+    }
+  }
+
+  // language id 大小写不敏感，建表时已归一化，这里用同一规则还原参与匹配的键
+  for (const [icon, ids] of Object.entries(iconSet.languageIds ?? {})) {
+    for (const id of ids) {
+      compare('languageIds', normalizeLanguageId(id), icon, languageIds)
     }
   }
 
@@ -278,7 +285,7 @@ function removeStem(iconSet: IconSet, stem: ResolvedIconSetFileStem): IconSet {
  */
 export interface UnmatchableEntry {
   /** 声明来源 */
-  kind: 'fileNames' | 'fileExtensions' | 'folderNames' | 'fileStems'
+  kind: 'fileNames' | 'fileExtensions' | 'folderNames' | 'fileStems' | 'languageIds'
   /** 声明方图标名 */
   icon: string
   /** 永不生效的名称或规则 */
@@ -293,7 +300,9 @@ export interface UnmatchableEntry {
  * 判定依据来自匹配链路已有的约定，而不是重新实现匹配：
  * 1. `parseFilePath` 会把输入统一小写，因此含大写字母的名称永不命中；
  * 2. `transformer` 用 `名称 + '.' + 扩展名` 构造具名文件键，扩展名含前导点会多出一个点；
- * 3. `extensions` 为空数组时既不展开为具名文件，也不具备运行期匹配条件。
+ * 3. `extensions` 为空数组时既不展开为具名文件，也不具备运行期匹配条件；
+ * 4. language id 的键会与输入一同归一化（去除首尾空白并小写），
+ *    因此含首尾空白的 id 永不命中，而空 id 反过来会命中空输入、遮蔽默认图标。
  *
  * 名称为空字符串（如 `name: ''`）不在此检查范围：它并非永不命中，而是会过度匹配。
  *
@@ -324,6 +333,30 @@ export function findUnmatchableEntries(iconSet: IconSet): UnmatchableEntry[] {
   checkTable('fileNames', iconSet.fileNames)
   checkTable('folderNames', iconSet.folderNames)
   checkTable('fileExtensions', iconSet.fileExtensions)
+
+  for (const [icon, ids] of Object.entries(iconSet.languageIds ?? {})) {
+    for (const id of ids) {
+      // 空 id 会命中空输入（含非字符串输入），抢在默认图标之前返回
+      if (id.trim() === '') {
+        entries.push({
+          kind: 'languageIds',
+          icon,
+          entry: `'${id}'`,
+          reason: '空 id 会命中空输入（含非字符串输入），遮蔽默认图标',
+        })
+        continue
+      }
+
+      if (id !== id.trim()) {
+        entries.push({
+          kind: 'languageIds',
+          icon,
+          entry: `'${id}'`,
+          reason: '含首尾空白，而查找前输入已去除首尾空白',
+        })
+      }
+    }
+  }
 
   for (const [icon, rules] of Object.entries(iconSet.fileStems ?? {})) {
     for (const rule of rules) {
