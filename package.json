@@ -32,6 +32,9 @@
     "./vscode-icons": "./dist/vscode-icons.js",
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "validate": "tsx scripts/validate.ts",
     "build": "tsdown",
