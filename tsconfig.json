@@ -1,0 +1,9 @@
+{
+  "extends": ["@pengzhanbo/tsconfig/tsconfig.json", "@pengzhanbo/tsconfig/tsconfig.lib.json"],
+  "include": ["./src", "./scripts", "./test"],
+  "exclude": ["node_modules", "dist"],
+  "compilerOptions": {
+    "isolatedDeclarations": true,
+    "types": ["node"]
+  }
+}

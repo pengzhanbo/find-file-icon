@@ -1,0 +1,86 @@
+{
+  "name": "find-file-icon",
+  "version": "0.0.0",
+  "description": "Find file icon by file path, use iconify collections",
+  "keywords": [
+    "catppuccin",
+    "file",
+    "folder",
+    "icon",
+    "iconify",
+    "vscode-icons"
+  ],
+  "homepage": "https://github.com/pengzhanbo/find-file-icon",
+  "bugs": "https://github.com/pengzhanbo/find-file-icon/issues",
+  "license": "MIT",
+  "author": "pengzhanbo <q942450674@outlook.com> (https://github.com/pengzhanbo)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pengzhanbo/find-file-icon.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.js",
+    "./catppuccin": "./dist/catppuccin.js",
+    "./core": "./dist/core.js",
+    "./icon-set/catppuccin": "./dist/icon-set/catppuccin.js",
+    "./icon-set/vscode-icons": "./dist/icon-set/vscode-icons.js",
+    "./vscode-icons": "./dist/vscode-icons.js",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "validate": "tsx scripts/validate.ts",
+    "build": "tsdown",
+    "test": "vitest --coverage",
+    "lint": "oxlint . --type-check --type-aware && oxfmt . --check",
+    "lint:action": "oxlint . --type-check --type-aware --format=github && oxfmt . --check",
+    "format": "oxlint . --type-check --type-aware --fix && oxfmt .",
+    "release:publish": "pnpm publish --provenance --access public",
+    "release": "bumpp package.json --commit \"build: publish v%s\" -x \"pnpm build\" --push --tag --all",
+    "prepare": "simple-git-hooks"
+  },
+  "devDependencies": {
+    "@iconify-json/catppuccin": "^1.2.17",
+    "@iconify-json/vscode-icons": "^1.2.82",
+    "@pengzhanbo/oxc-config": "^2.10.0",
+    "@pengzhanbo/tsconfig": "^2.10.0",
+    "@pengzhanbo/utils": "^3.12.0",
+    "@types/node": "^26.6.3",
+    "@vitest/coverage-v8": "^5.0.2",
+    "ansis": "^4.4.0",
+    "bumpp": "^12.3.0",
+    "nano-staged": "^1.0.2",
+    "oxfmt": "^0.70.0",
+    "oxlint": "^1.85.0",
+    "oxlint-tsgolint": "^7.0.2003",
+    "publint": "^0.3.24",
+    "simple-git-hooks": "^2.14.0",
+    "tsdown": "^0.23.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "./node_modules/.bin/nano-staged --allow-empty"
+  },
+  "nano-staged": {
+    "*.{js,ts,mjs,cjs}": "pnpm run lint",
+    "*": "oxfmt --no-error-on-unmatched-pattern",
+    "src/**/*.ts": "vitest related --run",
+    "src/icon-set/**/*.ts": "pnpm run validate"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^12.6.0",
+      "onFail": "download"
+    }
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

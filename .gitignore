@@ -1,0 +1,13 @@
+node_modules
+.DS_Store
+dist
+.idea
+coverage
+
+npm-debug.log*
+pnpm-debug.log*
+
+.claude
+.agent
+
+!.*/skills

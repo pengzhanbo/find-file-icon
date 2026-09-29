@@ -1,0 +1,38 @@
+name: Test
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install
+        run: pnpm ci
+
+      - name: Test
+        env:
+          NODE_OPTIONS: --max_old_space_size=8192
+        run: pnpm run test
+
+      # - name: Upload coverage reports to Codecov
+      #   uses: codecov/codecov-action@v7
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
