@@ -21,15 +21,16 @@ input path (string)
 
 ## Key Directories
 
-| Path            | Purpose                                                                                                                          |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `src/core/`     | Logic: `parse-input.ts`, `create-finder.ts`, `transformer.ts`, `internal-types.ts`                                               |
-| `src/icon-set/` | Bulk **data only** IconSet literals: `vscode-icons.ts`, `catppuccin.ts` (each starts `// oxlint-disable max-lines`)              |
-| `src/*.ts`      | Package entries + `types.ts` (public contract, single source of truth)                                                           |
-| `test/`         | Flat vitest suites mirroring `src/core` modules + `entry.test.ts` for the public surface                                         |
-| `scripts/`      | `validate.ts` (report) + `checks.ts` (pure QA checks) + `common.ts` (icon sets ↔ Iconify datasets), `ignore-icons.ts` allowlists |
-| `dist/`         | tsdown output; gitignored and formatter/linter-ignored — never edit by hand                                                      |
-| `.github/`      | `workflows/lint.yaml` + `workflows/test.yaml` — CI on push/PR to `main`                                                          |
+| Path            | Purpose                                                                                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/core/`     | Logic: `parse-input.ts`, `create-finder.ts`, `transformer.ts`, `internal-types.ts`                                                                                                   |
+| `src/icon-set/` | Bulk **data only** IconSet literals: `vscode-icons.ts`, `catppuccin.ts` (each starts `// oxlint-disable max-lines`)                                                                  |
+| `src/*.ts`      | Package entries + `types.ts` (public contract, single source of truth)                                                                                                               |
+| `test/`         | Flat vitest suites mirroring `src/core` modules + `entry.test.ts` for the public surface                                                                                             |
+| `scripts/`      | `validate.ts` (report) + `checks.ts` (pure QA checks) + `common.ts` (icon sets ↔ Iconify datasets), `ignore-icons.ts` allowlists, `sync-icons.ts` (dataset ↔ IconSet diff → `temp/`) |
+| `temp/`         | Gitignored scratch for `pnpm sync:icons`: generated entries, JSON report and the upstream manifest cache                                                                             |
+| `dist/`         | tsdown output; gitignored and formatter/linter-ignored — never edit by hand                                                                                                          |
+| `.github/`      | `workflows/lint.yaml` + `workflows/test.yaml` — CI on push/PR to `main`                                                                                                              |
 
 ## Development Commands
 
@@ -40,6 +41,7 @@ pnpm lint       # oxlint . --type-check --type-aware && oxfmt . --check
 pnpm format     # oxlint ... --fix && oxfmt .   (the fix/format pass)
 pnpm build      # tsdown → dist/ (ESM + d.ts; regenerates package.json#exports; runs publint on the packed tarball)
 pnpm validate   # tsx scripts/validate.ts — icon names vs @iconify-json datasets (exit 1 on errors)
+pnpm sync:icons # tsx scripts/sync-icons.ts — diff dataset vs IconSet, fetch the upstream manifest, write pending entries to temp/ (never edits src/)
 pnpm release    # bumpp: `-x "pnpm build"` runs first (publint gate), then version + commit + tag + push
 ```
 
@@ -47,6 +49,7 @@ pnpm release    # bumpp: `-x "pnpm build"` runs first (publint gate), then versi
 - `pnpm lint:action` is the same check with GitHub annotations, used by CI.
 - Pre-commit (`simple-git-hooks` → `nano-staged`): `*.{js,ts,mjs,cjs}` → `pnpm run lint`; `src/**/*.ts` → `vitest related --run`; `src/icon-set/**/*.ts` → `pnpm run validate`; everything else → `oxfmt --no-error-on-unmatched-pattern`.
 - Single suite: `pnpm vitest --run test/create-finder.test.ts` (`@vitest/ui` is not installed). Add `--run` to `pnpm test` for a single pass.
+- `pnpm sync:icons` takes no build step and is never wired into CI or the pre-commit hook: it is a manual, review-first helper. It writes to the gitignored `temp/` only, so `src/icon-set/*.ts` is never touched — merging the generated entries stays a human decision. Pass `--refresh` to bypass the upstream cache in `temp/upstream/`.
 
 ## Code Conventions & Common Patterns
 
@@ -58,7 +61,7 @@ pnpm release    # bumpp: `-x "pnpm build"` runs first (publint gate), then versi
 - **Prototype safety is a hard invariant**: lookup maps built with `Object.create(null)`, read through `hasOwn(obj, key)`; `test/create-finder.test.ts` covers names like `toString`/`constructor`.
 - **Functional style**: `const` closures created per finder; the input `IconSet` is never mutated (tests assert); data tables stay frozen-by-convention literals.
 - **Comments/JSDoc are Chinese**, with bilingual EN+zh blocks on public API (`src/types.ts`, entries, `findFileIcon`); internal helpers use a single Chinese block. Match the existing shape when touching public docs.
-- **Icon data is authored declaratively**: add `icon → names[]` entries in `src/icon-set/*.ts` (keep `fileStems` keys alphabetically grouped), then run `pnpm validate`.
+- **Icon data is authored declaratively**: add `icon → names[]` entries in `src/icon-set/*.ts` (keep `fileStems` keys alphabetically grouped), then run `pnpm validate`. After bumping `@iconify-json/*`, run `pnpm sync:icons` to list what the dataset gained and stage proposed mappings under `temp/` for review.
 - README.md and README.zh-CN.md are line-aligned mirrors; a user-visible change updates **both**.
 
 ## Important Files
@@ -72,6 +75,7 @@ pnpm release    # bumpp: `-x "pnpm build"` runs first (publint gate), then versi
 - `scripts/validate.ts` — icon-data QA report per icon set: unknown icons, unmatchable entries, duplicate matches and stem order ambiguity. Read-only; exits 1 when an error (unknown icon, unmatchable entry or duplicate match) is found, `顺序歧义` is warning-only.
 - `scripts/checks.ts` — pure check functions (`findUnknownIcons`, `partitionUnusedIcons`, `findDuplicateMatches`, `findUnmatchableEntries`, `findUnstableStemKeys`, `findShadowedStems`); matching is always evaluated through `transformer()` output, a probe finder, or rule ablation, so the matching rules are never re-implemented. This includes `languageIds`, whose keys are compared after `normalizeLanguageId` so declarations differing only in case are still detected as duplicates. `findUnmatchableEntries` is the one structural exception: it reports entries that can never be reached because of input lower-casing, leading-dot extensions, empty extension lists, or (for language ids) empty and whitespace-padded keys.
 - `scripts/common.ts` — icon set + Iconify dataset pairs (`iconSetSources`) and `collectUsedIcons()`, which reuses `transformer()` for prefix/expanded-suffix derivation — never hardcode `folder-type-`/`-opened`/`-open` again.
+- `scripts/sync-icons.ts` — the review-first sync helper behind `pnpm sync:icons`; `vscode-icons` only, since it is the one collection with an upstream path-mapping manifest. Step 1 diffs the installed dataset against the IconSet via `collectUsedIcons()` / `findUnknownIcons()` / `partitionUnusedIcons()`; step 2 fetches `languages.ts` / `supportedExtensions.ts` / `supportedFolders.ts` from the `vscode-icons` tag matching the dataset's `info.json` version (the extension version, not the npm one) and caches them under `temp/upstream/`; step 3 translates `filename` → `fileNames`, `filenamesGlob` + `extensionsGlob` → `fileStems`, bare `extensions` → `fileExtensions`, `languages` → `languageIds` and folder `extensions` → `folderNames`. Upstream TS is rewritten (imports dropped, `FileFormat`/`languages.*` inlined, type syntax stripped) and imported as ESM rather than evaluated with `new Function`. Conflict and unmatchable reporting reuses `findDuplicateMatches()` / `findUnmatchableEntries()` on a merged candidate IconSet, so matching is still never re-implemented; the only local rule is the path-separator check `findUnmatchableEntries()` does not cover.
 - `scripts/ignore-icons.ts` — hand-maintained allowlists with Chinese rationale comments.
 
 ## Runtime/Tooling Preferences

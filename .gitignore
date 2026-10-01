@@ -3,6 +3,7 @@ node_modules
 dist
 .idea
 coverage
+temp
 
 npm-debug.log*
 pnpm-debug.log*

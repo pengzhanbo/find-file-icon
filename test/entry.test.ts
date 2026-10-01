@@ -48,7 +48,7 @@ describe('vscode-icons finder', () => {
       file('vscode-icons:file-type-vue'),
     )
     expect(vscodeFindFileIcon('README.md')).toEqual(file('vscode-icons:file-type-markdown'))
-    expect(vscodeFindFileIcon('package.json')).toEqual(file('vscode-icons:file-type-npm'))
+    expect(vscodeFindFileIcon('package.json')).toEqual(file('vscode-icons:file-type-node'))
   })
 
   it('resolves nested extensions with the longest suffix first', () => {
@@ -67,7 +67,7 @@ describe('vscode-icons finder', () => {
 
   it('normalizes windows and mixed separators', () => {
     expect(vscodeFindFileIcon('C:\\Users\\dev\\package.json')).toEqual(
-      file('vscode-icons:file-type-npm'),
+      file('vscode-icons:file-type-node'),
     )
     expect(vscodeFindFileIcon('src\\components\\')).toEqual(
       folder('vscode-icons:folder-type-component', 'vscode-icons:folder-type-component-opened'),

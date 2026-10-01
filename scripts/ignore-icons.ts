@@ -168,6 +168,7 @@ export const vscodeIconsIgnores: string[] = [
   // 关联已由现有图标覆盖, 可能存在覆盖或冲突
   // 'file-type-html',
   'file-type-slang',
+  'file-type-pdf2',
 
   // 特殊图标
   'default-root-folder',
