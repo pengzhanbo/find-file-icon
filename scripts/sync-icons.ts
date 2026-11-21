@@ -6,13 +6,15 @@
  *
  * 1. 以已安装的 `@iconify-json/vscode-icons` 数据集为基准，用 `pnpm validate` 同款比对找出
  *    数据集中存在、但 IconSet 未引用的图标（即新增图标），以及 IconSet 引用了但数据集已移除的失效图标；
- * 2. 依据数据集 `info.json` 中的版本号（即 vscode-icons 扩展版本）拉取同版本 tag 的上游清单，
+ * 2. 默认依据数据集 `info.json` 中的版本号（即 vscode-icons 扩展版本）拉取同版本 tag 的上游清单；
+ *    上游长期不发布新 tag 时，可用 `--branch` 改为直接拉取主分支 master 的清单。
  *    下载结果缓存到 `temp/upstream/`，可用 `--refresh` 强制重新下载；
  * 3. 把上游条目翻译为 IconSet 表结构，复用 `scripts/checks.ts` 的既有检查能力评估冲突与永不命中条目，
  *    产物写入 `temp/vscode-icons-new-entries.ts` 与 `temp/vscode-icons-sync-report.json`。
  *
  * 用法：
- *   pnpm sync:icons            使用缓存（缺失时下载）
+ *   pnpm sync:icons            使用缓存（缺失时下载），按数据集版本对应的 tag 拉取清单
+ *   pnpm sync:icons --branch   直接从上游主分支 master 拉取清单（上游未发布新 tag 时使用）
  *   pnpm sync:icons --refresh  忽略缓存，重新下载上游清单
  */
 import type { IconSet, IconSetStemRule } from '../src/types.js'
@@ -46,6 +48,8 @@ const REPORT_FILE = join(TEMP_DIR, 'vscode-icons-sync-report.json')
 const COLLECTION = 'vscode-icons'
 /** 上游仓库原始文件地址前缀 */
 const UPSTREAM_BASE = 'https://raw.githubusercontent.com/vscode-icons/vscode-icons'
+/** 上游主分支名，`--branch` 模式下作为拉取目标 */
+const UPSTREAM_BRANCH = 'master'
 /** 上游清单中需要的文件 */
 const UPSTREAM_FILES = ['languages.ts', 'supportedExtensions.ts', 'supportedFolders.ts'] as const
 
@@ -53,8 +57,8 @@ const UPSTREAM_FILES = ['languages.ts', 'supportedExtensions.ts', 'supportedFold
 interface ManifestEntry {
   /** 图标名（不含集合内前缀） */
   icon: string
-  /** 扩展名或具名文件；`filename: true` 时为具名文件 */
-  extensions: string[]
+  /** 扩展名或具名文件；`filename: true` 时为具名文件，仅声明 languages 时缺省 */
+  extensions?: string[]
   /** language id，可能是字符串、字符串数组或二者的嵌套数组 */
   languages?: (string | string[])[]
   /** 单个 language id，部分条目使用该字段 */
@@ -65,6 +69,8 @@ interface ManifestEntry {
   filenamesGlob?: string[]
   /** 与 `filenamesGlob` 搭配的扩展名白名单 */
   extensionsGlob?: string[]
+  /** 为 true 时上游已禁用该条目，不应生成映射 */
+  disabled?: boolean
 }
 
 /** 翻译后的 IconSet 表结构片段，五张表均可选，这里统一归一为非空 */
@@ -90,9 +96,19 @@ async function main(): Promise<void> {
 
   const { iconSet, availableIcons } = source
   const refresh = process.argv.includes('--refresh')
+  const fromBranch = process.argv.includes('--branch')
+  if (!fromBranch && !info.version) {
+    throw new Error('数据集 info.json 缺少 version 字段，无法定位上游 tag，可改用 --branch')
+  }
+  const upstream = fromBranch
+    ? { kind: 'branch' as const, ref: UPSTREAM_BRANCH }
+    : { kind: 'tag' as const, ref: `v${info.version}` }
 
   console.log(`====================== ${ansis.magenta(COLLECTION)} =======================\n`)
   console.log(`数据集版本：${ansis.cyan(info.version)}（共 ${info.total} 个图标）`)
+  if (fromBranch) {
+    console.log(`上游清单：${ansis.yellow(`分支 ${UPSTREAM_BRANCH}`)}（忽略数据集版本对应的 tag）`)
+  }
 
   // 1. 检查图标变更：以已安装数据集为基准比对 IconSet 的引用情况
   const usedIcons = collectUsedIcons(iconSet)
@@ -113,7 +129,7 @@ async function main(): Promise<void> {
       REPORT_FILE,
       `${JSON.stringify(
         {
-          source: { collection: COLLECTION, datasetVersion: info.version },
+          source: { collection: COLLECTION, datasetVersion: info.version, upstream },
           changed: { newFileIcons: [], newFolderIcons: [], unknownIcons, unmappedIcons: [] },
         },
         null,
@@ -134,13 +150,9 @@ async function main(): Promise<void> {
     `新增文件夹图标 (${ansis.blue(newFolderIcons.length)}): ${printIcons(newFolderIcons)}`,
   )
 
-  // 2. 从上游仓库获取同版本清单
-  const version = info.version
-  if (!version) {
-    throw new Error('数据集 info.json 缺少 version 字段，无法定位上游 tag')
-  }
-  const cacheDir = join(TEMP_DIR, 'upstream', `${COLLECTION}-v${version}`)
-  await fetchUpstream(cacheDir, version, refresh)
+  // 2. 从上游仓库获取清单（数据集版本对应的 tag，或 --branch 指定的主分支）
+  const cacheDir = join(TEMP_DIR, 'upstream', `${COLLECTION}-${upstream.ref}`)
+  await fetchUpstream(cacheDir, upstream.ref, refresh)
 
   const languageIds = await loadLanguageIds(cacheDir)
   const manifestFiles = await loadManifest(cacheDir, 'supportedExtensions.ts', languageIds)
@@ -161,7 +173,7 @@ async function main(): Promise<void> {
         source: {
           collection: COLLECTION,
           datasetVersion: info.version,
-          upstreamTag: `v${info.version}`,
+          upstream,
         },
         changed: {
           newFileIcons,
@@ -193,11 +205,10 @@ async function main(): Promise<void> {
  * 下载上游清单到本地缓存
  *
  * @param cacheDir 缓存目录
- * @param version 数据集版本，用于拼接上游 tag
+ * @param ref 上游引用，版本 tag（形如 `v13.0.0`）或分支名（形如 `master`）
  * @param refresh 是否忽略缓存强制重新下载
  */
-async function fetchUpstream(cacheDir: string, version: string, refresh: boolean): Promise<void> {
-  const tag = `v${version}`
+async function fetchUpstream(cacheDir: string, ref: string, refresh: boolean): Promise<void> {
   const pending = UPSTREAM_FILES.filter((file) => refresh || !existsSync(join(cacheDir, file)))
   if (pending.length === 0) {
     console.log(`\n使用上游清单缓存：${relative(ROOT, cacheDir)}`)
@@ -206,7 +217,7 @@ async function fetchUpstream(cacheDir: string, version: string, refresh: boolean
 
   mkdirSync(cacheDir, { recursive: true })
   for (const file of pending) {
-    const url = `${UPSTREAM_BASE}/${tag}/src/iconsManifest/${file}`
+    const url = `${UPSTREAM_BASE}/${ref}/src/iconsManifest/${file}`
     const response = await fetch(url).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error)
       throw new Error(`下载上游清单失败：${url}\n  ${message}`)
@@ -216,7 +227,7 @@ async function fetchUpstream(cacheDir: string, version: string, refresh: boolean
     }
     const text = await response.text()
     if (text.startsWith('404')) {
-      throw new Error(`上游清单不存在，请确认版本 tag 是否正确：${url}`)
+      throw new Error(`上游清单不存在，请确认版本 tag 或分支是否正确：${url}`)
     }
     writeFileSync(join(cacheDir, file), text)
     console.log(`\n已下载 ${url}`)
@@ -301,9 +312,9 @@ function rewriteManifest(code: string, languageIds?: Record<string, string[]>): 
       JSON.stringify(languageIds[key] ?? [key]),
     )
   }
-  // 类型语法：satisfies 子句，以及 `const x: IFileCollection` / `Record<...>` 形态的类型注解
+  // 类型语法：satisfies 子句，以及 `const x: SomeType =` 形态的类型注解
   result = result.replace(/\s+satisfies\s+[^;\n]*/g, '')
-  result = result.replace(/:\s*(?:I[A-Z]\w*|Record<[^>\n]*>)/g, '')
+  result = result.replace(/^(\s*(?:export\s+)?const\s+[\w$]+)\s*:\s*[^\s=][^=\n]*=/gm, '$1 =')
 
   if (result.includes('import ')) {
     throw new Error('上游清单改写后仍包含 import 语句，请检查上游文件结构是否变化')
@@ -341,11 +352,16 @@ function buildEntries(
     if (!newFileIcons.includes(entry.icon)) {
       continue
     }
+    // 上游已禁用的条目视为已处理，但不生成映射
     manifestIcons.add(entry.icon)
+    if (entry.disabled) {
+      continue
+    }
 
+    const extensions = entry.extensions ?? []
     if (entry.filename) {
-      if (entry.extensions.length > 0) {
-        fileNames[entry.icon] = merge(fileNames[entry.icon], entry.extensions)
+      if (extensions.length > 0) {
+        fileNames[entry.icon] = merge(fileNames[entry.icon], extensions)
       }
       // filenamesGlob 与 extensionsGlob 组成「前缀 + 扩展名白名单」的精确规则
       if (entry.filenamesGlob?.length) {
@@ -355,8 +371,8 @@ function buildEntries(
         }
         fileStems[entry.icon] = rules
       }
-    } else if (entry.extensions.length > 0) {
-      fileExtensions[entry.icon] = merge(fileExtensions[entry.icon], entry.extensions)
+    } else if (extensions.length > 0) {
+      fileExtensions[entry.icon] = merge(fileExtensions[entry.icon], extensions)
     }
 
     const ids = flattenLanguageIds(entry)
@@ -370,7 +386,10 @@ function buildEntries(
       continue
     }
     manifestIcons.add(entry.icon)
-    folderNames[entry.icon] = merge(folderNames[entry.icon], entry.extensions)
+    if (entry.disabled) {
+      continue
+    }
+    folderNames[entry.icon] = merge(folderNames[entry.icon], entry.extensions ?? [])
   }
 
   return {

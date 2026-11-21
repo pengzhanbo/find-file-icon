@@ -105,6 +105,8 @@ export const vscodeIconsIgnores: string[] = [
   'file-type-powershell-psd2',
   'file-type-powershell-psm2',
   'file-type-powershell2',
+  'file-type-reactjs-official',
+  'file-type-reactts-official',
   'file-type-sln2',
   'file-type-tsconfig-official',
   'file-type-typescript-official',
