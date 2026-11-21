@@ -47,7 +47,7 @@ describe('vscode-icons finder', () => {
     expect(vscodeFindFileIcon('src/components/Button.vue')).toEqual(
       file('vscode-icons:file-type-vue'),
     )
-    expect(vscodeFindFileIcon('README.md')).toEqual(file('vscode-icons:file-type-markdown'))
+    expect(vscodeFindFileIcon('README.md')).toEqual(file('vscode-icons:file-type-readme'))
     expect(vscodeFindFileIcon('package.json')).toEqual(file('vscode-icons:file-type-node'))
   })
 
